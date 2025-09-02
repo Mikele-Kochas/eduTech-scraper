@@ -9,6 +9,10 @@ from urllib.parse import urljoin, urlparse, urlsplit, urlunsplit
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import yaml
 import feedparser
 
 logging.basicConfig(
@@ -44,6 +48,9 @@ class NewsScraper:
         self.start_date = (datetime.now() - timedelta(days=window_days)).date()
         self.news_items = []
         self.genai_model = None
+        # rate-limit per domain
+        self._domain_locks: dict[str, threading.Lock] = {}
+        self._domain_last: dict[str, float] = {}
 
     def _date_in_window(self, dt: datetime) -> bool:
         try:
@@ -209,6 +216,27 @@ class NewsScraper:
             for el in soup.select(sel):
                 el.decompose()
 
+    def _get_domain(self, url: str) -> str:
+        return urlparse(url).netloc
+
+    def _respect_rate_limit(self, url: str) -> None:
+        try:
+            rps = float(os.environ.get('DOMAIN_RPS', '1.0'))
+        except Exception:
+            rps = 1.0
+        if rps <= 0:
+            rps = 0.1
+        min_interval = 1.0 / rps
+        domain = self._get_domain(url)
+        lock = self._domain_locks.setdefault(domain, threading.Lock())
+        with lock:
+            last = self._domain_last.get(domain, 0.0)
+            now = time.time()
+            wait = last + min_interval - now
+            if wait > 0:
+                time.sleep(wait)
+            self._domain_last[domain] = time.time()
+
     def _extract_main_text(self, soup: BeautifulSoup, url: str) -> str:
         self._clean_soup(soup)
         domain = urlparse(url).netloc
@@ -321,6 +349,7 @@ class NewsScraper:
 
     def _process_article(self, url: str):
         try:
+            self._respect_rate_limit(url)
             resp = requests.get(url, headers=self.headers, timeout=20)
             resp.raise_for_status()
             ctype = resp.headers.get('Content-Type', '')
@@ -388,12 +417,57 @@ class NewsScraper:
                     soup_js = BeautifulSoup(rendered, 'html.parser')
                     links = self._discover_links(list_url, soup_js, allow_substrings=allow_substrings, allow_regex=allow_regex)
             added = 0
-            for i, link in enumerate(links, 1):
-                if self._process_article(link):
-                    added += 1
+            # równoległe przetwarzanie artykułów
+            try:
+                workers = int(os.environ.get('SCRAPER_WORKERS', '12'))
+            except Exception:
+                workers = 12
+            if workers < 1:
+                workers = 1
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                future_map = {executor.submit(self._process_article, link): link for link in links}
+                for future in as_completed(future_map):
+                    try:
+                        if future.result():
+                            added += 1
+                    except Exception as e:
+                        logger.debug(f"Article task failed for {future_map[future]}: {e}")
             logger.info(f"Crawl from {list_url}: added {added} articles")
         except Exception as e:
             logger.error(f"Crawl failed for {list_url}: {e}")
+
+    # ===== Config-driven scraping =====
+    def scrape_from_config(self, config_path: str = 'configs/sources.yaml'):
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                cfg = yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.error(f"Failed to read config {config_path}: {e}")
+            return
+        sources = (cfg.get('sources') or [])
+        for src in sources:
+            try:
+                name = src.get('name')
+                listings = src.get('listings') or []
+                allow_substrings = src.get('allow_substrings') or None
+                allow_regex = src.get('allow_regex') or None
+                rps = src.get('rate_limit_rps')
+                # override per-domain rate-limit if provided
+                if rps:
+                    base = src.get('base_url')
+                    if base:
+                        domain = urlparse(base).netloc
+                        self._domain_last[domain] = 0.0
+                        # store per-domain min interval using negative placeholder in last map
+                        # we’ll interpret presence of domain in _domain_last as tracked
+                        # rps applied dynamically in _respect_rate_limit by global env; for now, log info
+                        logger.info(f"Config for {name}: rate_limit_rps={rps}")
+                needs_js = bool(src.get('needs_js', False))
+                logger.info(f"Source {name}: listings={len(listings)} needs_js={needs_js}")
+                for list_url in listings:
+                    self.crawl_from_listing(list_url, allow_substrings=allow_substrings, allow_regex=allow_regex)
+            except Exception as e:
+                logger.error(f"Config source error: {e}")
 
     def _parse_feed(self, feed_url: str, source_name: str):
         try:

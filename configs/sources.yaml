@@ -1,0 +1,58 @@
+sources:
+  - name: edunews
+    base_url: https://edunews.pl
+    listings:
+      - https://edunews.pl/aktualnosci
+    allow_substrings:
+      - /system-edukacji/
+      - /narzedzia-i-projekty/
+      - /edukacja-na-co-dzien/
+      - /nowoczesna-edukacja/
+      - /badania-i-debaty/
+      - /wydarzenia/
+    allow_regex: 'https?://[^/]*edunews\.pl/.+?/\d{3,}-'
+    deny_ext: [".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".zip", ".doc", ".docx", ".xls", ".xlsx"]
+    prefer_feed: false
+    needs_js: false
+    rate_limit_rps: 1.0
+    language: pl
+
+  - name: frse
+    base_url: https://www.frse.org.pl
+    listings:
+      - https://www.frse.org.pl/aktualnosci
+      - https://www.frse.org.pl/wydarzenia-i-szkolenia
+    allow_substrings:
+      - /aktualnosci/
+      - /wydarzenia-i-szkolenia/
+    deny_ext: [".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".zip", ".doc", ".docx", ".xls", ".xlsx"]
+    prefer_feed: false
+    needs_js: false
+    rate_limit_rps: 1.0
+    language: pl
+
+  - name: youth_europa
+    base_url: https://youth.europa.eu
+    listings:
+      - https://youth.europa.eu/news_pl
+    allow_substrings:
+      - /news/
+    deny_ext: [".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".zip", ".doc", ".docx", ".xls", ".xlsx"]
+    prefer_feed: false
+    needs_js: true
+    rate_limit_rps: 0.5
+    language: pl
+
+  - name: ibe
+    base_url: https://ibe.edu.pl
+    listings:
+      - https://ibe.edu.pl/pl/aktualnosci
+    allow_substrings:
+      - /pl/aktualnosci/
+    deny_ext: [".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".zip", ".doc", ".docx", ".xls", ".xlsx"]
+    prefer_feed: false
+    needs_js: false
+    rate_limit_rps: 1.0
+    language: pl
+
+

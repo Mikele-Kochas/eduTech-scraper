@@ -48,11 +48,8 @@ def index():
 @app.route('/api/run', methods=['POST'])
 def run_scrape():
     scraper = NewsScraper()
-    # Wszystkie źródła
-    scraper.scrape_edunews()
-    scraper.scrape_frse()
-    scraper.scrape_youth_europa()
-    scraper.scrape_ibe()
+    # Config-driven scraping
+    scraper.scrape_from_config()
     scraper.enrich_with_gemini()
     # Return JSON directly without writing to disk
     return jsonify(scraper.news_items)
