@@ -1,0 +1,6 @@
+.env
+scraper.log
+__pycache__/
+*.pyc
+ms-playwright/
+
