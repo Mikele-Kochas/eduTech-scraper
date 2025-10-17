@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, send_from_directory, Response, stream_with_context
+from flask import Flask, jsonify, render_template, send_from_directory, Response, stream_with_context, request
 import os
 import json
 from news_scraper import NewsScraper
@@ -47,12 +47,57 @@ def index():
 
 @app.route('/api/run', methods=['POST'])
 def run_scrape():
-    scraper = NewsScraper()
-    # Config-driven scraping
-    scraper.scrape_from_config()
-    scraper.enrich_with_gemini()
-    # Return JSON directly without writing to disk
-    return jsonify(scraper.news_items)
+    try:
+        data = request.json or {}
+        api_key = data.get('api_key', '').strip()
+        
+        # Ustaw klucz API z UI, lub użyj z .env
+        if api_key:
+            os.environ['GOOGLE_API_KEY'] = api_key
+            logger.info("Using API key from UI")
+        
+        scraper = NewsScraper()
+        # Config-driven scraping
+        scraper.scrape_from_config()
+        scraper.enrich_with_gemini()
+        scraper.save_to_json()
+        return jsonify(scraper.news_items)
+    except Exception as e:
+        logger.error(f"Scrape error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export', methods=['POST'])
+def export_to_txt():
+    """Export current news items to TXT format and download"""
+    try:
+        data = request.json or []
+        if not data:
+            return jsonify({'error': 'Brak danych do exportu'}), 400
+        
+        # Format: Title | Date | Original Content | AI Content | Link
+        txt_content = "EXPORT AKTUALNOŚCI\n"
+        txt_content += "=" * 80 + "\n\n"
+        
+        for idx, item in enumerate(data, 1):
+            txt_content += f"{idx}. {item.get('tytuł', 'Brak tytułu')}\n"
+            txt_content += f"   Data: {item.get('data', '—')}\n"
+            txt_content += f"   Link: {item.get('link', '—')}\n"
+            txt_content += f"\n   Treść (AI):\n   {item.get('gemini_tresc', item.get('treść', '—')).replace(chr(10), chr(10) + '   ')}\n"
+            txt_content += "\n" + "-" * 80 + "\n\n"
+        
+        # Create filename with date
+        from datetime import datetime as dt
+        filename = f"aktualnosci_{dt.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        
+        return Response(
+            txt_content,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+    except Exception as e:
+        logger.error(f"Export failed: {e}")
+        return jsonify({'error': 'Błąd podczas exportu'}), 500
 
 
 @app.route('/static/<path:filename>')

@@ -374,48 +374,12 @@ class NewsScraper:
             logger.debug(f"Skip article {url}: {e}")
             return False
 
-    def _render_html(self, url: str) -> str | None:
-        try:
-            from playwright.sync_api import sync_playwright
-        except Exception as e:
-            logger.debug(f"Playwright not available: {e}")
-            return None
-        try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(locale='pl-PL', user_agent=self.headers.get('User-Agent'))
-                page = context.new_page()
-                page.set_default_timeout(20000)
-                page.goto(url, wait_until='networkidle')
-                # Poczekaj aż pojawią się linki do newsów
-                try:
-                    page.wait_for_selector('a[href*="/news/"]', timeout=10000)
-                except Exception:
-                    pass
-                # Delikatny scroll, by zainicjować lazy-load (jeśli jest)
-                try:
-                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                except Exception:
-                    pass
-                html = page.content()
-                browser.close()
-                return html
-        except Exception as e:
-            logger.debug(f"Playwright render failed for {url}: {e}")
-            return None
-
     def crawl_from_listing(self, list_url: str, allow_substrings: list[str] | None = None, allow_regex: str | None = None):
         try:
             r = requests.get(list_url, headers=self.headers, timeout=20)
             r.raise_for_status()
             soup = BeautifulSoup(r.text, 'html.parser')
             links = self._discover_links(list_url, soup, allow_substrings=allow_substrings, allow_regex=allow_regex)
-            # Fallback: jeśli brak linków (np. treść ładowana JS), spróbuj Playwright
-            if not links:
-                rendered = self._render_html(list_url)
-                if rendered:
-                    soup_js = BeautifulSoup(rendered, 'html.parser')
-                    links = self._discover_links(list_url, soup_js, allow_substrings=allow_substrings, allow_regex=allow_regex)
             added = 0
             # równoległe przetwarzanie artykułów
             try:
@@ -459,11 +423,10 @@ class NewsScraper:
                         domain = urlparse(base).netloc
                         self._domain_last[domain] = 0.0
                         # store per-domain min interval using negative placeholder in last map
-                        # we’ll interpret presence of domain in _domain_last as tracked
+                        # we'll interpret presence of domain in _domain_last as tracked
                         # rps applied dynamically in _respect_rate_limit by global env; for now, log info
                         logger.info(f"Config for {name}: rate_limit_rps={rps}")
-                needs_js = bool(src.get('needs_js', False))
-                logger.info(f"Source {name}: listings={len(listings)} needs_js={needs_js}")
+                logger.info(f"Source {name}: listings={len(listings)}")
                 for list_url in listings:
                     self.crawl_from_listing(list_url, allow_substrings=allow_substrings, allow_regex=allow_regex)
             except Exception as e:
@@ -526,45 +489,6 @@ class NewsScraper:
         # Dodatkowo wydarzenia (opcjonalnie):
         self.crawl_from_listing("https://www.frse.org.pl/wydarzenia-i-szkolenia", allow_substrings=["/wydarzenia-i-szkolenia/"])
 
-    def scrape_youth_europa(self):
-        base = "https://youth.europa.eu"
-        # 1) spróbuj sitemap
-        all_sitemaps = self._fetch_sitemaps_from_robots(base)
-        # fallback: dobrze znane ścieżki sitemap jeśli robots nic nie zwraca
-        if not all_sitemaps:
-            candidates = [
-                urljoin(base, "/sitemap.xml"),
-                urljoin(base, "/sitemap_index.xml"),
-                urljoin(base, "/sitemap-index.xml"),
-                urljoin(base, "/sitemap-news.xml"),
-                urljoin(base, "/sitemap_news.xml"),
-                urljoin(base, "/news/sitemap.xml"),
-                urljoin(base, "/pl/sitemap.xml"),
-            ]
-            all_sitemaps.extend(candidates)
-        news_candidates: list[tuple[str, datetime | None]] = []
-        for sm in all_sitemaps:
-            news_candidates.extend([item for item in self._fetch_sitemap_links(sm) if '/news/' in item[0]])
-        # prefer język polski _pl
-        news_candidates = [item for item in news_candidates if item[0].endswith('_pl')]
-        # sortuj po lastmod malejąco
-        news_candidates.sort(key=lambda x: (x[1] or datetime.min), reverse=True)
-        # odfiltruj oknem dat jeśli mamy lastmod
-        filtered = []
-        for url, lastmod in news_candidates:
-            if lastmod is None or self._date_in_window(lastmod):
-                filtered.append(url)
-            if len(filtered) >= 80:
-                break
-        logger.debug(f"Youth sitemap candidates: {len(filtered)}")
-        added = 0
-        for u in filtered:
-            if self._process_article(u):
-                added += 1
-        # 2) fallback: listing crawl (gdyby sitemap nic nie dał)
-        if added == 0:
-            self.crawl_from_listing("https://youth.europa.eu/news_pl", allow_substrings=["/news/"])
-
     def scrape_ibe(self):
         self.crawl_from_listing("https://ibe.edu.pl/pl/aktualnosci", allow_substrings=["/pl/aktualnosci/"])
 
@@ -595,7 +519,10 @@ class NewsScraper:
             logger.error(f"Gemini init failed: {e}")
             return
         for item in self.news_items:
-            if item.get('gemini_tytul') and item.get('gemini_tresc'):
+            # Czyszczenie starych pól
+            item.pop('gemini_tytul', None)
+            
+            if item.get('gemini_tresc'):
                 continue
             original_title = item.get('tytuł', '')
             date_str = item.get('data', '')
@@ -607,13 +534,14 @@ class NewsScraper:
             start_ts = datetime.now()
             logger.info(f"Gemini start for: {link}")
             prompt = (
-                "Jesteś rzetelnym redaktorem. Na podstawie dostarczonej treści artykułu napisz nowy tytuł "
-                "oraz artykuł w 4-5 akapitach. Używaj wyłącznie informacji zawartych w tekście, bez dopowiadania. "
-                "Zwróć wynik w JSON z polami: gemini_tytul, gemini_tresc. Treść sformatuj w akapity oddzielone pustą linią.\n\n"
-                f"TYTUL_ORG: {original_title}\n"
+                "Jesteś rzetelnym redaktorem. Na podstawie dostarczonej treści artykułu napisz streszczenie w 3-4 akapitach. "
+                "Używaj wyłącznie informacji zawartych w tekście, bez dopowiadania i interpretacji. "
+                "Sformatuj treść w oddzielne akapity (oddziel pustą linią). "
+                "WAŻNE: Zawsze zwróć treść, nie zostawiaj pola puste.\n\n"
+                f"TYTUŁ: {original_title}\n"
                 f"DATA: {date_str}\n"
                 f"LINK: {link}\n"
-                f"TEKST: {text}"
+                f"TEKST:\n{text}"
             )
             try:
                 resp = self.genai_model.generate_content(
@@ -621,7 +549,6 @@ class NewsScraper:
                     generation_config={'response_mime_type': 'application/json'}
                 )
                 resp_text = getattr(resp, 'text', '') or ''
-                parsed_title = None
                 parsed_body = None
                 # Strip markdown code fences if present
                 fenced = resp_text.strip()
@@ -640,18 +567,15 @@ class NewsScraper:
                     end = resp_text.rfind('}')
                     if start != -1 and end != -1 and end > start:
                         payload = json.loads(resp_text[start:end+1])
-                        parsed_title = (payload.get('gemini_tytul') or payload.get('gemini_title'))
-                        parsed_body = (payload.get('gemini_tresc') or payload.get('gemini_content'))
+                        parsed_body = (payload.get('gemini_tresc') or payload.get('gemini_content') or payload.get('content'))
                 except Exception:
                     pass
                 # Fallback heuristic if JSON parse failed
-                if not parsed_title or not parsed_body:
+                if not parsed_body:
                     lines = [ln.strip() for ln in resp_text.splitlines() if ln.strip()]
                     if lines:
-                        parsed_title = parsed_title or lines[0][:200]
-                        parsed_body = parsed_body or '\n\n'.join(lines[1:])
-                if parsed_title and parsed_body:
-                    item['gemini_tytul'] = parsed_title
+                        parsed_body = '\n\n'.join(lines)
+                if parsed_body:
                     item['gemini_tresc'] = parsed_body
                     elapsed = (datetime.now() - start_ts).total_seconds()
                     logger.info(f"Gemini done for: {link} in {elapsed:.2f}s")
@@ -665,7 +589,6 @@ def main():
     # Uruchom wszystkie crawlery
     scraper.scrape_edunews()
     scraper.scrape_frse()
-    scraper.scrape_youth_europa()
     scraper.scrape_ibe()
     # Enrichment via Gemini
     scraper.enrich_with_gemini()

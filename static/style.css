@@ -4,6 +4,10 @@ header{display:flex;justify-content:space-between;align-items:center;padding:16p
 h1{font-size:18px;margin:0;letter-spacing:.3px}
 button{background:linear-gradient(135deg,var(--brand),var(--accent));color:#0b1220;border:1px solid rgba(56,189,248,.35);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(34,211,238,.2)}
 button:disabled{opacity:.6;cursor:wait}
+.header-buttons{display:flex;gap:10px;align-items:center}
+.api-key-input{background:#0a1020;color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:14px;width:220px;outline:none}
+.api-key-input::placeholder{color:var(--muted)}
+.api-key-input:focus{border-color:var(--brand);box-shadow:0 0 8px rgba(34,211,238,.3)}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;padding:18px}
 .panel{padding:0 18px}
 .logs{background:#0a1020;border:1px solid var(--border);border-radius:10px;color:#a5b4fc;padding:12px;max-height:240px;overflow:auto}

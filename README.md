@@ -1,86 +1,63 @@
 # eduTech-scraper
 
-Minimalistyczna aplikacja do zbierania i streszczania newsów z portali edukacyjnych (config‑driven), z UI w Flask, wzbogacaniem przez Gemini 2.5 Flash i podglądem logów na żywo (SSE).
+Automatyczne zbieranie i streszczanie newsów z polskich portali edukacyjnych.
 
-## Funkcje
-- Równoległy crawl (ThreadPool) + limit zapytań per domena
-- Strukturalny pipeline: RSS → sitemap → listing HTML → JS (Playwright, opcjonalnie)
-- Konfiguracja źródeł w `configs/sources.yaml` 
-- Ekstrakcja pełnej treści (p/li), normalizacja, deduplikacja URL
-- Generacja alternatywnej treści i tytułu przez Gemii 2.5 Flash
-- UI (Flask): loader, karty tytułów, modal ze szczegółami, logi SSE
+## Co to jest?
 
-## Wymagania
-- Python 3.10+
-- `pip install -r requirements.txt`
-- (opcjonalnie dla stron renderowanych JS) `python -m playwright install chromium`
+To aplikacja, która:
+- **Zbiera aktualności** z trzech głównych portali edukacyjnych (edunews.pl, frse.org.pl, ibe.edu.pl)
+- **Automatycznie streszcza** każdy artykuł za pomocą sztucznej inteligencji (Gemini)
+- **Wyświetla artykuły** w przejrzystym interfejsie
+- **Pozwala pobrać** wszystkie artykuły w formacie tekstowym
 
-## Konfiguracja
-Plik `.env` w katalogu projektu:
-```
-GOOGLE_API_KEY=TWÓJ_KLUCZ
-NEWS_WINDOW_DAYS=3          # okno dat (1–30), domyślnie 3
-SCRAPER_WORKERS=12          # liczba wątków dla crawlu
-DOMAIN_RPS=1.0              # globalny limit rps na domenę
-```
+## Dla kogo?
 
-Źródła w `configs/sources.yaml` (fragment):
-```yaml
-sources:
-  - name: edunews
-    base_url: https://edunews.pl
-    listings:
-      - https://edunews.pl/aktualnosci
-    allow_substrings:
-      - /system-edukacji/
-      - /narzedzia-i-projekty/
-      - /edukacja-na-co-dzien/
-      - /nowoczesna-edukacja/
-      - /badania-i-debaty/
-      - /wydarzenia/
-    allow_regex: 'https?://[^/]*edunews\.pl/.+?/\d{3,}-'
-    needs_js: false
-```
+- Nauczyciele i edukatorzy chcący być na bieżąco z wiadomościami z branży
+- Osoby zainteresowane rozwojem edukacji w Polsce
+- Każdy, kto chce zaoszczędzić czas przeglądając newsy z wielu stron naraz
 
-Pola konfiguracyjne:
-- `listings`: URL‑e list aktualności
-- `allow_substrings`/`allow_regex`: filtr akceptowanych linków
-- `deny_ext`: rozszerzenia do odrzucenia (binarne)
-- `needs_js`: czy listing wymaga renderu JS (Playwright)
-- `rate_limit_rps`: nadpisanie limitu rps per domena
+## Instalacja
 
-## Uruchomienie (UI)
-PowerShell (Windows):
-```
+```bash
 pip install -r requirements.txt
-python -m playwright install chromium   # opcjonalnie
 python app.py
 ```
-Wejdź na `http://localhost:5000` i kliknij „Uruchom zbieranie”.
 
-## Format danych (UI/JSON)
-Każdy rekord zawiera m.in.:
-```json
-{
-  "tytuł": "…",
-  "treść": "…",
-  "link": "https://…",
-  "data": "YYYY-MM-DD",
-  "gemini_tytul": "…",
-  "gemini_tresc": "…"
-}
+Wejdź na `http://localhost:5000`
+
+## Obsługa - Krok po kroku
+
+**Przed pierwszym użyciem:**
+- Załóż darmowy klucz API na https://aistudio.google.com/app/apikey
+- Skopiuj klucz (będzie Ci potrzebny)
+
+**Uruchomienie:**
+1. Otworz `http://localhost:5000` w przeglądarce
+2. Wpisz klucz Gemini w polu tekstowym (górny panel) - zostanie zapamiętany
+3. Kliknij **"Uruchom zbieranie"** i czekaj aż artykuły się załadują
+
+**Przeglądanie:**
+- Artykuły wyświetlają się jako karty z tytułem, datą i fragmentem
+- Kliknij kartę aby zobaczyć pełny tekst (oryginalny i streszczony)
+- Kliknij link aby przejść do oryginalnego artykułu
+
+**Pobieranie:**
+- Kliknij **"Pobierz jako TXT"** aby pobrać wszystkie artykuły na swój komputer
+- Plik otworzysz w Notatniku lub Wordzie
+
+## Konfiguracja
+
+`.env` (opcjonalnie):
+```
+GOOGLE_API_KEY=twój_klucz
+NEWS_WINDOW_DAYS=3
+SCRAPER_WORKERS=12
 ```
 
-## Uwaga dot. Playwright
-Niektóre strony (np. `youth.europa.eu/news_pl` [lista](https://youth.europa.eu/news_pl)) ładują listing JS‑em – wtedy aplikacja automatycznie użyje Playwright. Pojedyncze strony artykułów (np. wpis o nagrodzie: [Apply to the Roma Youth Project Award 2025](https://youth.europa.eu/news/apply-roma-youth-project-award-2025-eu5000-prize_pl)) parsowane są już klasycznie (HTML).
+Źródła: `configs/sources.yaml`
 
-## Skrypty/parametry
-- Okno dat: `NEWS_WINDOW_DAYS` (domyślnie 3)
-- Wątki: `SCRAPER_WORKERS` (domyślnie 12)
-- Limit rps: `DOMAIN_RPS` (domyślnie 1.0), można nadpisać per domenę w yaml
+## Obsługiwane źródła
 
-## Roadmap (skrót)
-- Adapter „generic_site” w pełni mapujący selektory tytułu/treści/daty
-- Persistencja (SQLite/Postgres) do dedupu i historii
-- Kolejka zadań (RQ/Celery): osobno crawl / JS / Gemini
-
+- edunews.pl
+- frse.org.pl
+- ibe.edu.pl
