@@ -10,12 +10,6 @@ To aplikacja, która:
 - **Wyświetla artykuły** w przejrzystym interfejsie
 - **Pozwala pobrać** wszystkie artykuły w formacie tekstowym
 
-## Dla kogo?
-
-- Nauczyciele i edukatorzy chcący być na bieżąco z wiadomościami z branży
-- Osoby zainteresowane rozwojem edukacji w Polsce
-- Każdy, kto chce zaoszczędzić czas przeglądając newsy z wielu stron naraz
-
 ## Pobranie
 
 ```bash
