@@ -16,6 +16,15 @@ To aplikacja, która:
 - Osoby zainteresowane rozwojem edukacji w Polsce
 - Każdy, kto chce zaoszczędzić czas przeglądając newsy z wielu stron naraz
 
+## Pobranie
+
+```bash
+git clone https://github.com/Mikele-Kochas/eduTech-scraper.git
+cd eduTech-scraper
+```
+
+Lub [pobierz ZIP](https://github.com/Mikele-Kochas/eduTech-scraper/archive/refs/heads/main.zip) i rozpakuj
+
 ## Instalacja
 
 ```bash
